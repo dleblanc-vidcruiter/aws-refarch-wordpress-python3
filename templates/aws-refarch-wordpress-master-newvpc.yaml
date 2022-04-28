@@ -68,6 +68,7 @@ Metadata:
         - DatabaseCmk
         - DatabaseMasterUsername
         - DatabaseMasterPassword
+        - DatabaseRestoreSnapshot
         - DatabaseName
         - UseElastiCacheBoolean
         - ElastiCacheNodeType
@@ -98,6 +99,8 @@ Metadata:
         default: Bastion Instance Type
       CloudFrontAcmCertificate:
         default: CloudFront Certificate ARN
+      DatabaseRestoreSnapshot:
+        default: Snapshot to restore from
       DatabaseCmk:
         default: AWS KMS CMK for RDS 
       DatabaseEncrpytedBoolean:
@@ -354,6 +357,10 @@ Parameters:
     MaxLength: 41
     MinLength: 8
     NoEcho: true
+    Type: String
+  DatabaseRestoreSnapshot:
+    AllowedPattern: ^$|(arn:aws:rds:)([a-z0-9/:-])*([a-z0-9])$
+    Description: '[ Optional ] The RDS snapshot you wish to restore from. The snapshot should be created in the us-east-1 (N. Virginia) region and must reference the WordPress domain name you use below.'
     Type: String
   DatabaseName:
     AllowedPattern: ^([a-zA-Z0-9]*)$
@@ -1196,6 +1203,8 @@ Resources:
           !Ref DatabaseMasterUsername
         DatabaseMasterPassword:
           !Ref DatabaseMasterPassword
+        DatabaseRestoreSnapshot:
+          !Ref DatabaseRestoreSnapshot
         DatabaseName:
           !Ref DatabaseName
         DatabaseEncrpytedBoolean:
