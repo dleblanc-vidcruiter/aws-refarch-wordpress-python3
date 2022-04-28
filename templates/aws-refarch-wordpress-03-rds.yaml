@@ -19,6 +19,7 @@ Metadata:
         - DatabaseInstanceType
         - DatabaseMasterUsername
         - DatabaseMasterPassword
+        - DatabaseRestoreSnapshot
         - DatabaseName
         - DatabaseEncrpytedBoolean
         - DatabaseCmk
