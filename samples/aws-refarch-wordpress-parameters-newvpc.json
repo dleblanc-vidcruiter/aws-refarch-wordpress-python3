@@ -28,7 +28,7 @@
   { "ParameterKey": "ElastiCacheNodeType",      "ParameterValue": "cache.t3.medium" },
   { "ParameterKey": "NumberOfAZs",              "ParameterValue": "3" },
   { "ParameterKey": "PHPVersion",               "ParameterValue": "7.0" },
-  { "ParameterKey": "PHPIniOverride",           "ParameterValue": "https://s3.amazonaws.com/aws-refarch/wordpress/latest/bits/20-aws.ini"},
+  { "ParameterKey": "PHPIniOverride",           "ParameterValue": "https://s3.amazonaws.com/aws-refarch-python3/wordpress/latest/bits/20-aws.ini"},
   { "ParameterKey": "PublicAlbAcmCertificate",  "ParameterValue": "" },
   { "ParameterKey": "PublicSubnet0Cidr",        "ParameterValue": "10.0.200.0/24" },
   { "ParameterKey": "PublicSubnet1Cidr",        "ParameterValue": "10.0.201.0/24" },
