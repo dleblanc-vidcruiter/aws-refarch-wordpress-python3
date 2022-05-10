@@ -489,7 +489,7 @@ Resources:
     CreationPolicy:
       ResourceSignal:
         Count: !Ref WebAsgMin
-        Timeout: PT5M
+        Timeout: PT15M
   WebLaunchConfiguration74:
     Condition: PHP74
     Type: AWS::AutoScaling::LaunchConfiguration
