@@ -570,6 +570,7 @@ Resources:
               content:
                 !Sub |
                   #!/bin/bash -xe
+                  pecl install igbinary
                   wget -P /tmp/ https://s3.amazonaws.com/aws-refarch-python3/wordpress/latest/bits/AmazonElastiCacheClusterClient-PHP74-64bit-libmemcached-1.0.18.tar.gz
                   tar -xf '/tmp/AmazonElastiCacheClusterClient-PHP74-64bit-libmemcached-1.0.18.tar.gz'
                   cp '/tmp/amazon-elasticache-cluster-client.so' /usr/lib64/php/modules/
