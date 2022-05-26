@@ -527,7 +527,7 @@ Resources:
                     "sudo amazon-linux-extras install php7.4\n",
                     "sudo amazon-linux-extras enable php7.4\n",
                     "sudo yum clean metadata\n",
-                    "sudo yum -y install php-cli php-pdo php-fpm php-json php-mysqlnd\n",
+                    "sudo yum -y install php-cli php-pdo php-fpm php-json php-mysqlnd php-mbstring\n",
                     "sudo yum -y install awslogs\n",
                     "sudo yum -y install mysql\n",
                     "sudo yum -y install php-devel\n",
