@@ -452,12 +452,13 @@ Resources:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
       Cooldown: 60
-      HealthCheckGracePeriod: 300
+      HealthCheckGracePeriod: 900
       HealthCheckType: ELB
       LaunchConfigurationName:
         !Ref WebLaunchConfiguration74
       MaxSize: !Ref WebAsgMax
       MinSize: !Ref WebAsgMin
+      DesiredCapacity: !Ref WebAsgMin
       Tags:
         - Key: Name
           Value: !Join [ '', [ 'Web ASG / ', !Ref 'AWS::StackName' ] ]
@@ -490,6 +491,10 @@ Resources:
       ResourceSignal:
         Count: !Ref WebAsgMin
         Timeout: PT15M
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        PauseTime: PT15M
+        WaitOnResourceSignals: true
   WebLaunchConfiguration74:
     Condition: PHP74
     Type: AWS::AutoScaling::LaunchConfiguration
@@ -498,7 +503,11 @@ Resources:
         configSets:
           deploy_webserver:
             - amazon_linux_extras_setup
+            - nginx_download_files
             - install_webserver
+            - nginx_config_file
+            - nginx_service_file
+            - configure_php_fpm
             - build_cacheclient
             - build_wordpress
             - build_opcache
@@ -518,12 +527,13 @@ Resources:
                     "sudo amazon-linux-extras install php7.4\n",
                     "sudo amazon-linux-extras enable php7.4\n",
                     "sudo yum clean metadata\n",
-                    "sudo yum -y install php-cli php-pdo php-fpm php-json php-mysqlnd\n",
+                    "sudo yum -y install php-cli php-pdo php-fpm php-json php-mysqlnd php-mbstring\n",
                     "sudo yum -y install awslogs\n",
-                    "sudo yum -y install httpd\n",
                     "sudo yum -y install mysql\n",
                     "sudo yum -y install php-devel\n",
-                    "sudo yum -y install php-pear\n"
+                    "sudo yum -y install php-pear\n",
+                    "sudo yum -y install unzip \n",
+                    "sudo yum -y install git httpd-devel pcre-devel libxml2-devel gcc zlib-devel gcc-c++ autoconf automake \n",
                   ]
                 ]
               mode: 000500
@@ -534,32 +544,217 @@ Resources:
               command: ./create_amazon_linux_extras.sh
               cwd: /tmp
               ignoreErrors: false
-        install_webserver:
+        nginx_download_files:
           files:
-            /tmp/create_site_conf.sh:
+            /tmp/nginx_download_files.sh:
               content:
                 !Join [
                   "",[
                     "#!/bin/bash -xe\n",
-                    "if [ ! -f /etc/httpd/conf.d/", !Ref WPDirectory, ".conf ]; then\n",
-                    "   touch /etc/httpd/conf.d/", !Ref WPDirectory, ".conf\n",
-                    "   echo 'ServerName 127.0.0.1:80' >> /etc/httpd/conf.d/", !Ref WPDirectory, ".conf\n",
-                    "   echo 'DocumentRoot /var/www/wordpress/", !Ref WPDirectory, "' >> /etc/httpd/conf.d/", !Ref WPDirectory, ".conf\n",
-                    "   echo '<Directory /var/www/wordpress/", !Ref WPDirectory, ">' >> /etc/httpd/conf.d/", !Ref WPDirectory, ".conf\n",
-                    "   echo '  Options Indexes FollowSymLinks' >> /etc/httpd/conf.d/", !Ref WPDirectory, ".conf\n",
-                    "   echo '  AllowOverride All' >> /etc/httpd/conf.d/", !Ref WPDirectory, ".conf\n",
-                    "   echo '  Require all granted' >> /etc/httpd/conf.d/", !Ref WPDirectory, ".conf\n",
-                    "   echo '</Directory>' >> /etc/httpd/conf.d/", !Ref WPDirectory, ".conf\n",
-                    "fi\n"
+                    "wget -P /tmp/ https://nginx.org/download/nginx-1.20.2.tar.gz -O - | tar -xz -C /tmp/ \n",
+                    "git clone --recursive https://github.com/google/ngx_brotli /tmp/ngx_brotli \n",
+                    "sudo wget -c https://www.openssl.org/source/openssl-1.1.1o.tar.gz -O - | sudo tar -xz -C /usr/local/src \n"
                   ]
                 ]
               mode: 000500
               owner: root
               group: root
           commands:
-            create_site_conf:
-              command: ./create_site_conf.sh
+            nginx_download_files:
+              command: ./nginx_download_files.sh
               cwd: /tmp
+              ignoreErrors: false
+        install_webserver:
+          files:
+            /tmp/nginx_install_w_modules.sh:
+              content:
+                !Join [
+                  "",[
+                    "#!/bin/bash -xe\n",
+                    "cd /tmp/nginx-1.20.2 \n",
+                    "./configure --sbin-path=/usr/sbin/nginx --conf-path=/etc/nginx/nginx.conf --error-log-path=/var/log/nginx/error.log --http-log-path=/var/log/nginx/access.log --pid-path=/var/run/nginx.pid --without-http_charset_module --without-http_ssi_module --without-http_userid_module --without-http_access_module --without-http_autoindex_module --without-http_geo_module --without-http_split_clients_module --without-http_referer_module --without-http_uwsgi_module --without-http_scgi_module --without-http_memcached_module --without-http_limit_conn_module --without-http_limit_req_module --without-http_empty_gif_module --without-http_browser_module --without-http_upstream_hash_module --without-http_upstream_ip_hash_module --without-http_upstream_least_conn_module --without-http_upstream_keepalive_module --without-mail_pop3_module --without-mail_imap_module --without-mail_smtp_module --with-http_ssl_module --with-openssl=/usr/local/src/openssl-1.1.1o --with-compat --add-dynamic-module=../ngx_brotli \n",
+                    "make \n",
+                    "make modules \n",
+                    "make install \n"
+                  ]
+                ]
+              mode: 000500
+              owner: root
+              group: root
+          commands:
+            nginx_install_w_modules:
+              command: ./nginx_install_w_modules.sh
+              cwd: /tmp
+              ignoreErrors: false
+        nginx_config_file:
+          files:
+            /etc/nginx/nginx.conf:
+              content:
+                !Sub |
+                  user  nginx;
+                  # Result of: grep processor /proc/cpuinfo | wc -l
+                  worker_processes  2;
+
+                  #error_log  logs/error.log;
+                  #error_log  logs/error.log  notice;
+                  #error_log  logs/error.log  info;
+
+                  #pid        logs/nginx.pid;
+
+                  # Load module section
+                  load_module modules/ngx_http_brotli_filter_module.so;
+                  load_module modules/ngx_http_brotli_static_module.so;
+
+                  events {
+                      multi_accept        on;
+                      use                 epoll;
+                      # should be worker_process * ulimit -n
+                      worker_connections  2048;
+                  }
+
+                  http {
+                      include       mime.types;
+                      default_type  application/octet-stream;
+
+                      #log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                      #                  '$status $body_bytes_sent "$http_referer" '
+                      #                  '"$http_user_agent" "$http_x_forwarded_for"';
+
+                      #access_log  logs/access.log  main;
+
+                      sendfile        on;
+                      tcp_nopush     on;
+                      tcp_nodelay        on;
+
+                      gzip  off;
+
+                      # brotli
+                      brotli on;
+                      brotli_static on;
+                      brotli_comp_level 6;
+                      brotli_types text/xml image/svg+xml application/x-font-ttf image/vnd.microsoft.icon application/x-font-opentype application/json font/eot application/vnd.ms-fontobject application/javascript font/otf application/xml application/xhtml+xml text/javascript  application/x-javascript text/plain application/x-font-truetype application/xml+rss image/x-icon font/opentype text/css image/x-win-bitmap;
+
+                      ## Start: Size Limits & Buffer Overflows ##
+                      client_body_buffer_size  10K;
+                      #client_header_buffer_size 1k; # uncomment and test
+                      client_max_body_size 500m; # This is only high because of video uploads
+                      #large_client_header_buffers 2 1k; # uncomment and test
+                      ## END: Size Limits & Buffer Overflows ##
+
+                      ## Start: Timeouts ##
+                      client_body_timeout   60; # changed from 10
+                      client_header_timeout 60; # changed from 10
+                      # keepalive_timeout     5 5; # Removed for now
+                      send_timeout          240;
+                      ## End: Timeouts ##
+
+                      server_tokens off;
+
+                      map $upstream_http_strict_transport_security $sts {
+                          '' 'max-age=63072000;includeSubDomains;preload;'; default '';
+                      }
+
+                      server {
+                          listen       80 default_server;
+                          server_name  localhost;
+                          root         /var/www/wordpress/vidcruiter;
+                          index        index.php;
+
+                          # https://developer.mozilla.org/en-US/docs/Web/Security/HTTP_strict_transport_security
+                          #add_header Strict-Transport-Security "max-age=63072000;includeSubDomains;preload;" always;
+                          proxy_hide_header Strict-Transport-Security;
+                          add_header Strict-Transport-Security $sts;
+
+                          # X-Content-Type-Options Best Practices
+                          add_header X-Content-Type-Options "nosniff" always;
+
+                          # X-Frame-Options Best Practices
+                          add_header X-Frame-Options "SAMEORIGIN";
+
+                          # X-XSS-Protection Best Practices
+                          add_header X-XSS-Protection "1; mode=block" always;
+
+                          # Load configuration files for the default server block.
+                          #include /etc/nginx/default.d/*.conf;
+
+                          # redirect server error pages to the static page /40x.html
+                          #
+                          error_page 404 /404.html;
+                              location = /40x.html {
+                          }
+
+                          # redirect server error pages to the static page /50x.html
+                          #
+                          error_page 500 502 503 504 /50x.html;
+                              location = /50x.html {
+                          }
+
+                          location / {
+                              try_files $uri $uri/ /index.php?$args;
+                          }
+
+                          location ~ \.php$ {
+                            fastcgi_pass     unix:/run/php-fpm/www.sock;
+                            fastcgi_index    index.php;
+                            fastcgi_param    SCRIPT_FILENAME $document_root$fastcgi_script_name;
+                            include          fastcgi_params;
+                          }
+
+                      }
+
+                  }
+              mode: 000500
+              owner: root
+              group: root
+        nginx_service_file:
+          files:
+            /usr/lib/systemd/system/nginx.service:
+              content:
+                !Sub |
+                  [Unit]
+                  Description=The nginx HTTP and reverse proxy server
+                  After=network-online.target remote-fs.target nss-lookup.target
+                  Wants=network-online.target
+
+                  [Service]
+                  Type=forking
+                  PIDFile=/run/nginx.pid
+                  # Nginx will fail to start if /run/nginx.pid already exists but has the wrong
+                  # SELinux context. This might happen when running `nginx -t` from the cmdline.
+                  # https://bugzilla.redhat.com/show_bug.cgi?id=1268621
+                  ExecStartPre=/usr/bin/rm -f /run/nginx.pid
+                  ExecStartPre=/usr/sbin/nginx -t
+                  ExecStart=/usr/sbin/nginx
+                  ExecReload=/usr/sbin/nginx -s reload
+                  KillSignal=SIGQUIT
+                  TimeoutStopSec=5
+                  KillMode=mixed
+                  PrivateTmp=true
+
+                  [Install]
+                  WantedBy=multi-user.target
+              mode: 000500
+              owner: root
+              group: root
+        configure_php_fpm:
+          commands:
+            01_replace_apache_with_nginx_user:
+              command: "sed -i 's/apache/nginx/g' /etc/php-fpm.d/www.conf"
+              ignoreErrors: false
+            02_comment_acl_groups:
+              command: "sed -i 's/^listen.acl_users*/;listen.acl_users/g' /etc/php-fpm.d/www.conf"
+              ignoreErrors: false
+            03_adding_nginx_owner_group:
+              command: "sed -i 's/nobody/nginx/g' /etc/php-fpm.d/www.conf"
+              ignoreErrors: false
+            04_remove_commented_permissions:
+              command: "sed -i 's/^;listen.owner*/listen.owner/g' /etc/php-fpm.d/www.conf && sed -i 's/^;listen.group*/listen.group/g' /etc/php-fpm.d/www.conf"
+              ignoreErrors: false
+            05_set_ownership_logs_dir:
+              command: "chown -R nginx:nginx /var/log/php-fpm"
+              ignoreErrors: false
+            06_set_ownership_session_dir:
+              command: "chown -R root:nginx /var/lib/php/"
               ignoreErrors: false
         build_cacheclient:
           packages:
@@ -637,7 +832,7 @@ Resources:
                             !If [ NoSslCertificate, !Join [ '', [ "       sed -i \"/$table_prefix = 'wp_';/ a \\# No ACM Public SSL Certificate \" /var/www/wordpress/", !Ref WPDirectory, "/wp-config.php\n" ] ] , !Join [ '', [ "       sed -i \"/$table_prefix = 'wp_';/ a \\$_SERVER['HTTPS'] = 'on';\" /var/www/wordpress/", !Ref WPDirectory, "/wp-config.php\n" ] ] ],
                     "\n",
                     "       # set permissions of wordpress site directories\n",
-                    "       chown -R apache:apache /var/www/wordpress/", !Ref WPDirectory, "\n",
+                    "       chown -R nginx:nginx /var/www/wordpress/", !Ref WPDirectory, "\n",
                     "       chmod u+wrx /var/www/wordpress/", !Ref WPDirectory, "/wp-content/*\n",
                     "       if [ ! -f /var/www/wordpress/", !Ref WPDirectory, "/opcache-instanceid.php ]; then\n",
                     "         wget -P /var/www/wordpress/", !Ref WPDirectory, "/ https://s3.amazonaws.com/aws-refarch-python3/wordpress/latest/bits/opcache-instanceid.php\n",
@@ -693,12 +888,17 @@ Resources:
               command: ./install_opcache.sh
               cwd: /tmp
               ignoreErrors: false
-        #start_webserver:
-        #  commands: "sudo service httpd start\n"
         start_webserver:
+          commands:
+            01_restart_php_fpm:
+              command: "sudo systemctl restart php-fpm.service"
+              ignoreErrors: false
+            02_restart_nginx:
+              command: "sudo systemctl restart nginx.service"
+              ignoreErrors: false
           services:
-            sysvinit:
-              httpd:
+            systemd:
+              nginx:
                 enabled: true
                 ensureRunning: true
     Properties:
@@ -718,7 +918,6 @@ Resources:
             mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 ${ElasticFileSystem}.efs.${AWS::Region}.amazonaws.com:/ /var/www/wordpress
             /opt/aws/bin/cfn-init --configsets deploy_webserver --verbose --stack ${AWS::StackName} --resource WebLaunchConfiguration74 --region ${AWS::Region}
             /opt/aws/bin/cfn-signal --exit-code $? --stack ${AWS::StackName} --resource WebAutoScalingGroup --region ${AWS::Region}
-
 
 Outputs:
 

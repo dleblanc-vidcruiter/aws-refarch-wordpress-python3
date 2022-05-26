@@ -48,7 +48,7 @@ Conditions:
   NoSslCertificate:
     !Equals [ '', !Ref CloudFrontAcmCertificate ]
   WPDomainName:
-    !Not [ !Equals [ '', !Ref WPDomainName ] ]  
+    !Not [ !Equals [ '', !Ref WPDomainName ] ]
   NoWPDomainName:
     !Equals [ '', !Ref WPDomainName ]
 
@@ -204,10 +204,11 @@ Resources:
           CustomOriginConfig:
             OriginProtocolPolicy: https-only
         PriceClass: PriceClass_100
+        HttpVersion: http2
         ViewerCertificate:
           AcmCertificateArn: !Ref CloudFrontAcmCertificate
           SslSupportMethod: sni-only
-          MinimumProtocolVersion: TLSv1
+          MinimumProtocolVersion: TLSv1.2_2021
 
 Outputs:
 
