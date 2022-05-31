@@ -1,0 +1,149 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: WordPress on AWS - Creates Pipeline to Deploy VidCruiter WP Theme
+
+Metadata:
+
+  Authors:
+    Description: Jessica Lopez (jlopez@vidcruiter.com)
+
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: Pipeline Parameters
+      Parameters:
+        - PipelineBucket
+        - RepoConnection
+    ParameterLabels:
+      PipelineBucket:
+        default: Pipeline Bucket Name
+      RepoConnection:
+        default: Codestar Bitbucket Connection ARN
+
+Parameters:
+  PipelineBucket:
+    Description: Pipeline Bucket Name.
+    Type: String
+  PublicAlbTargetGroupName:
+    Description: Target group from the application load balancer.
+    Type: String
+  RepoConnection:
+    Description: Connection ARN for Bitbucket.
+    Type: String
+  WebASG:
+    Description: Web AutoScaling Group.
+    Type: String
+
+Resources:
+  CodeDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEC2FullAccess
+        - arn:aws:iam::aws:policy/AutoScalingFullAccess
+        - arn:aws:iam::aws:policy/AmazonSNSFullAccess
+        - arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
+      Path: /
+      AssumeRolePolicyDocument:
+        Statement:
+          - Sid: ''
+            Effect: Allow
+            Principal:
+              Service: codedeploy.amazonaws.com
+            Action: sts:AssumeRole
+
+  CodeDeployApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ComputePlatform: Server
+
+  CodeDeployGroup:
+    DependsOn: [ CodeDeployRole ]
+    Type: AWS::CodeDeploy::DeploymentGroup
+    Properties:
+      ApplicationName: !Ref CodeDeployApplication
+      AutoScalingGroups:
+        - !Ref 'WebASG'
+      DeploymentConfigName: CodeDeployDefault.OneAtATime
+      DeploymentStyle:
+        DeploymentOption: WITH_TRAFFIC_CONTROL
+        DeploymentType: IN_PLACE
+      LoadBalancerInfo:
+        TargetGroupInfoList:
+          - Name: !Ref PublicAlbTargetGroupName
+      ServiceRoleArn: !GetAtt CodeDeployRole.Arn
+
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - sts:AssumeRole
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+
+  CodePipelineServicePolicy:
+    Type: AWS::IAM::Policy
+    DependsOn: [ CodeDeployGroup ]
+    Properties:
+      PolicyName: CodePipelineServicePolicy
+      Roles:
+        - !Ref 'CodePipelineServiceRole'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+          - Effect: Allow
+            Resource:
+              - !Join
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref 'PipelineBucket'
+            Action:
+              - s3:ListBucket
+              - s3:GetBucketAcl
+              - s3:PutBucketAcl
+              - s3:GetBucketLocation
+              - s3:GetBucketVersioning
+          - Effect: Allow
+            Resource:
+              - !Join
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref 'PipelineBucket'
+                  - /*
+            Action:
+              - s3:PutObject
+              - s3:PutObjectAcl
+              - s3:GetObject
+              - s3:GetObjectVersion
+          - Effect: Allow
+            Action:
+              - codestar-connections:UseConnection
+            Resource:
+              - !Ref 'RepoConnection'
+          - Effect: Allow
+            Action:
+              - appconfig:StartDeployment
+              - appconfig:GetDeployment
+              - appconfig:StopDeployment
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - codedeploy:CreateDeployment
+              - codedeploy:GetApplication
+              - codedeploy:GetApplicationRevision
+              - codedeploy:GetDeployment
+              - codedeploy:GetDeploymentConfig
+              - codedeploy:RegisterApplicationRevision
+            Resource: !GetAtt 'CodeDeployRole.Arn'

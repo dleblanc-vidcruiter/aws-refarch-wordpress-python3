@@ -946,3 +946,5 @@ Outputs:
 
   Opcachestatus:
     Value: !Join [ '', [ !Ref PublicAlbHostname, '/opcache-instanceid.php' ] ]
+  WebASG:
+    Value: !Ref WebAutoScalingGroup

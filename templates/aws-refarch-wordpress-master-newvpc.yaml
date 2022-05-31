@@ -94,6 +94,11 @@ Metadata:
         - WPAdminPassword
         - WPDirectory
         - WPLocale
+    - Label:
+        default: Deployment Pipeline
+      Parameters:
+        - PipelineBucket
+        - RepoConnection
     ParameterLabels:
       BastionInstanceType:
         default: Bastion Instance Type
@@ -215,6 +220,10 @@ Metadata:
         default: Data Subnet 4
       DataSubnet5Cidr:
         default: Data Subnet 5
+      PipelineBucket:
+        default: Pipeline Bucket Name
+      RepoConnection:
+        default: Codestar Bitbucket Connection ARN
 
 Parameters:
 
@@ -316,6 +325,10 @@ Parameters:
   CloudFrontAcmCertificate:
     AllowedPattern: ^$|(arn:aws:acm:)([a-z0-9/:-])*([a-z0-9])$
     Description: '[ Optional ] The AWS Certification Manager certificate ARN for the CloudFront distribution certificate - this certificate should be created in the us-east-1 (N. Virginia) region and must reference the WordPress domain name you use below.'
+    Type: String
+  RepoConnection:
+    AllowedPattern: arn:aws(-[\w]+)*:.+:.+:[0-9]{12}:.+
+    Description: Codestar Bitbucket Connection ARN
     Type: String
   DatabaseCmk:
     Description: AWS KMS Customer Master Key (CMK) to encrypt database cluster
@@ -647,6 +660,10 @@ Parameters:
     - 7.4
     Default: 7.4
     Description: The version of PHP to install.
+    Type: String
+  PipelineBucket:
+    AllowedPattern: ^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$
+    Description: 'Pipeline Bucket Name'
     Type: String
   PublicAlbAcmCertificate:
     AllowedPattern: ^$|(arn:aws:acm:)([a-z0-9/:-])*([a-z0-9])$
@@ -1043,7 +1060,7 @@ Resources:
         PublicAlbFullName:
           !GetAtt [ publicalb, Outputs.PublicAlbFullName ]
         EfsCreateAlarms:
-          !Ref EfsCreateAlarms         
+          !Ref EfsCreateAlarms
       TemplateURL: https://s3.amazonaws.com/aws-refarch-python3/wordpress/latest/templates/aws-refarch-wordpress-06-dashboard.yaml
   dashboardwithnoalarms:
     Condition: EfsCreateNoAlarms
@@ -1058,8 +1075,22 @@ Resources:
         PublicAlbFullName:
           !GetAtt [ publicalb, Outputs.PublicAlbFullName ]
         EfsCreateAlarms:
-          !Ref EfsCreateAlarms         
+          !Ref EfsCreateAlarms
       TemplateURL: https://s3.amazonaws.com/aws-refarch-python3/wordpress/latest/templates/aws-refarch-wordpress-06-dashboard.yaml
+  deployment:
+    DependsOn: [ publicalb, web ]
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        PipelineBucket:
+          !Ref PipelineBucket
+        PublicAlbTargetGroupName:
+          !GetAtt [ publicalb, Outputs.PublicAlbTargetGroupName ]
+        RepoConnection:
+          !Ref RepoConnection
+        WebASG:
+          !GetAtt [ web, Outputs.WebASG]
+      TemplateURL: https://s3.amazonaws.com/aws-refarch-python3/wordpress/latest/templates/pipeline-deployment.yaml
   efsfilesystem:
     DependsOn: [ newvpc, securitygroups ]
     Type: AWS::CloudFormation::Stack
