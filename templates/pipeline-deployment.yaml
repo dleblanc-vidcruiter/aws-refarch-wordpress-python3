@@ -20,6 +20,10 @@ Metadata:
         default: Pipeline Bucket Name
       RepoConnection:
         default: Codestar Bitbucket Connection ARN
+      RepoName:
+        default: Name of the repository for the pipeline
+      DeployBranch:
+        default: Branch for the deployment
 
 Parameters:
   PipelineBucket:
@@ -30,6 +34,12 @@ Parameters:
     Type: String
   RepoConnection:
     Description: Connection ARN for Bitbucket.
+    Type: String
+  RepoName:
+    Description: Name of the repository for the pipeline.
+    Type: String
+  DeployBranch:
+    Description: Branch for the deployment.
     Type: String
   WebASG:
     Description: Web AutoScaling Group.
@@ -146,4 +156,55 @@ Resources:
               - codedeploy:GetDeployment
               - codedeploy:GetDeploymentConfig
               - codedeploy:RegisterApplicationRevision
-            Resource: !GetAtt 'CodeDeployRole.Arn'
+            Resource: '*'
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    DependsOn: [ CodePipelineServiceRole, CodeDeployGroup ]
+    Properties:
+      RoleArn: !GetAtt 'CodePipelineServiceRole.Arn'
+      ArtifactStore:
+        Type: S3
+        Location:
+          !Ref PipelineBucket
+      Stages:
+        -
+          Name: Bitbucket
+          Actions:
+          - Name: ApplicationSource
+            InputArtifacts: []
+            ActionTypeId:
+              Version: '1'
+              Owner: AWS
+              Category: Source
+              Provider: CodeStarSourceConnection
+            OutputArtifacts:
+              - Name: SourceArtifact
+            RunOrder: 1
+            Configuration:
+              ConnectionArn: !Ref 'RepoConnection'
+              FullRepositoryId: !Join
+                - ''
+                - - vidcruiter/
+                  - !Ref 'RepoName'
+              BranchName: !Ref 'DeployBranch'
+              OutputArtifactFormat: CODE_ZIP
+        -
+          Name: Deployment
+          Actions:
+            -
+              Name: DeploymentAction
+              InputArtifacts:
+                -
+                  Name: SourceArtifact
+              ActionTypeId:
+                Version: '1'
+                Owner: AWS
+                Category: Deploy
+                Provider: CodeDeploy
+              Configuration:
+                ApplicationName:
+                  !Ref CodeDeployApplication
+                DeploymentGroupName:
+                  !Ref CodeDeployGroup
+              RunOrder: 1

@@ -99,6 +99,8 @@ Metadata:
       Parameters:
         - PipelineBucket
         - RepoConnection
+        - RepoName
+        - DeployBranch
     ParameterLabels:
       BastionInstanceType:
         default: Bastion Instance Type
@@ -224,6 +226,10 @@ Metadata:
         default: Pipeline Bucket Name
       RepoConnection:
         default: Codestar Bitbucket Connection ARN
+      RepoName:
+        default: Name of the repository for the pipeline
+      DeployBranch:
+        default: Branch for the deployment
 
 Parameters:
 
@@ -326,10 +332,6 @@ Parameters:
     AllowedPattern: ^$|(arn:aws:acm:)([a-z0-9/:-])*([a-z0-9])$
     Description: '[ Optional ] The AWS Certification Manager certificate ARN for the CloudFront distribution certificate - this certificate should be created in the us-east-1 (N. Virginia) region and must reference the WordPress domain name you use below.'
     Type: String
-  RepoConnection:
-    AllowedPattern: arn:aws(-[\w]+)*:.+:.+:[0-9]{12}:.+
-    Description: Codestar Bitbucket Connection ARN
-    Type: String
   DatabaseCmk:
     Description: AWS KMS Customer Master Key (CMK) to encrypt database cluster
     Type: String
@@ -378,6 +380,9 @@ Parameters:
   DatabaseName:
     AllowedPattern: ^([a-zA-Z0-9]*)$
     Description: The Amazon RDS master database name.
+    Type: String
+  DeployBranch:
+    Description: Name of the branch selected to deploy in the EC2 instances
     Type: String
   EfsAlarmsInstanceType:
     AllowedValues:
@@ -668,6 +673,13 @@ Parameters:
   PublicAlbAcmCertificate:
     AllowedPattern: ^$|(arn:aws:acm:)([a-z0-9/:-])*([a-z0-9])$
     Description: '[ Optional ] The AWS Certification Manager certificate ARN for the ALB certificate - this certificate should be created in the region you wish to run the ALB and must reference the WordPress domain name you use below.'
+    Type: String
+  RepoConnection:
+    AllowedPattern: arn:aws(-[\w]+)*:.+:.+:[0-9]{12}:.+
+    Description: Codestar Bitbucket Connection ARN
+    Type: String
+  RepoName:
+    Description: Name of the repository to use in the pipeline
     Type: String
   SshAccessCidr:
     AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$
@@ -1088,6 +1100,10 @@ Resources:
           !GetAtt [ publicalb, Outputs.PublicAlbTargetGroupName ]
         RepoConnection:
           !Ref RepoConnection
+        RepoName:
+          !Ref RepoName
+        DeployBranch:
+          !Ref DeployBranch
         WebASG:
           !GetAtt [ web, Outputs.WebASG]
       TemplateURL: https://s3.amazonaws.com/aws-refarch-python3/wordpress/latest/templates/pipeline-deployment.yaml
