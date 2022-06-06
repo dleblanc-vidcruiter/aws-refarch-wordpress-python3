@@ -1310,6 +1310,8 @@ Resources:
           !Ref EC2KeyName
         NumberOfSubnets:
           !Ref NumberOfAZs
+        PipelineBucket:
+          !Ref PipelineBucket
         PHPIniOverride:
           !Ref PHPIniOverride
         PHPVersion:

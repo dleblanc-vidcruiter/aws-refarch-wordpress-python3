@@ -154,6 +154,9 @@ Parameters:
     Default: 7.4
     Description: The version of PHP to install.
     Type: String
+  PipelineBucket:
+    Description: Pipeline Bucket Name.
+    Type: String
   PublicAlbTargetGroupArn:
     Description: The public application load balancer target group arn.
     Type: String
@@ -448,6 +451,27 @@ Resources:
             - logs:DescribeLogStreams
             Resource:
             - arn:aws:logs:*:*:*
+          - Effect: Allow
+            Resource:
+              - !Join
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref 'PipelineBucket'
+            Action:
+              - s3:ListBucket
+              - s3:GetBucketAcl
+              - s3:GetBucketLocation
+              - s3:GetBucketVersioning
+          - Effect: Allow
+            Resource:
+              - !Join
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref 'PipelineBucket'
+                  - /*
+            Action:
+              - s3:GetObject
+              - s3:GetObjectVersion
   WebAutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
@@ -503,7 +527,6 @@ Resources:
         configSets:
           deploy_webserver:
             - amazon_linux_extras_setup
-            - install_codedeploy_agent
             - nginx_download_files
             - install_webserver
             - nginx_config_file
@@ -518,6 +541,7 @@ Resources:
             - install_wordpress
             - install_opcache
             - start_webserver
+            - install_codedeploy_agent
         amazon_linux_extras_setup:
           files:
             /tmp/create_amazon_linux_extras.sh:
