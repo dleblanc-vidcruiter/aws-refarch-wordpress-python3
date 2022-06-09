@@ -26,11 +26,12 @@ Metadata:
         default: Branch for the deployment
 
 Parameters:
+  EFS:
+    AllowedPattern: ^(fs-)([a-z0-9]{8,17})$
+    Description: The Amazon EFS file system id.
+    Type: String
   PipelineBucket:
     Description: Pipeline Bucket Name.
-    Type: String
-  PublicAlbTargetGroupName:
-    Description: Target group from the application load balancer.
     Type: String
   RepoConnection:
     Description: Connection ARN for Bitbucket.
@@ -41,48 +42,199 @@ Parameters:
   DeployBranch:
     Description: Branch for the deployment.
     Type: String
-  WebASG:
-    Description: Web AutoScaling Group.
+  NumberOfSubnets:
+    AllowedValues:
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    Default: 3
+    Description: Number of subnets. This must match your selections in the list of Subnets below.
     Type: String
+  Subnet:
+    Description: Subnets of the vpc to have access to EFS
+    Type: List<AWS::EC2::Subnet::Id>
+  VPCId:
+    Description: VPC to deploy Codebuild
+    Type: String
+  SG:
+    Description: Select the efs security group.
+    Type: AWS::EC2::SecurityGroup::Id
+
+Conditions:
+  NumberOfSubnets1:
+    !Equals [ 1, !Ref NumberOfSubnets ]
+  NumberOfSubnets2:
+    !Equals [ 2, !Ref NumberOfSubnets ]
+  NumberOfSubnets3:
+    !Equals [ 3, !Ref NumberOfSubnets ]
+  NumberOfSubnets4:
+    !Equals [ 4, !Ref NumberOfSubnets ]
+  NumberOfSubnets5:
+    !Equals [ 5, !Ref NumberOfSubnets ]
+  NumberOfSubnets6:
+    !Equals [ 6, !Ref NumberOfSubnets ]
+  Subnet0: !Or
+    - !Condition NumberOfSubnets1
+    - !Condition NumberOfSubnets2
+    - !Condition NumberOfSubnets3
+    - !Condition NumberOfSubnets4
+    - !Condition NumberOfSubnets5
+    - !Condition NumberOfSubnets6
+  Subnet1: !Or
+    - !Condition NumberOfSubnets2
+    - !Condition NumberOfSubnets3
+    - !Condition NumberOfSubnets4
+    - !Condition NumberOfSubnets5
+    - !Condition NumberOfSubnets6
+  Subnet2: !Or
+    - !Condition NumberOfSubnets3
+    - !Condition NumberOfSubnets4
+    - !Condition NumberOfSubnets5
+    - !Condition NumberOfSubnets6
+  Subnet3: !Or
+    - !Condition NumberOfSubnets4
+    - !Condition NumberOfSubnets5
+    - !Condition NumberOfSubnets6
+  Subnet4: !Or
+    - !Condition NumberOfSubnets5
+    - !Condition NumberOfSubnets6
+  Subnet5: !Condition NumberOfSubnets6
 
 Resources:
-  CodeDeployRole:
+  CodeBuildServiceRole:
     Type: AWS::IAM::Role
     Properties:
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/AmazonEC2FullAccess
-        - arn:aws:iam::aws:policy/AutoScalingFullAccess
-        - arn:aws:iam::aws:policy/AmazonSNSFullAccess
-        - arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
-      Path: /
       AssumeRolePolicyDocument:
+        Version: 2012-10-17
         Statement:
-          - Sid: ''
-            Effect: Allow
+          - Effect: Allow
+            Action:
+              - sts:AssumeRole
             Principal:
-              Service: codedeploy.amazonaws.com
-            Action: sts:AssumeRole
+              Service:
+                - codebuild.amazonaws.com
 
-  CodeDeployApplication:
-    Type: AWS::CodeDeploy::Application
+  CodeBuildServicePolicy:
+    Type: AWS::IAM::Policy
     Properties:
-      ComputePlatform: Server
+      PolicyName: CodeBuildServicePolicy
+      Roles:
+        - !Ref CodeBuildServiceRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: "arn:aws:logs:*:*:*"
+          - Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:GetBucketAcl
+              - s3:PutBucketAcl
+              - s3:GetBucketLocation
+              - s3:GetBucketVersioning
+            Resource:
+              - !Join
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref 'PipelineBucket'
+          - Effect: Allow
+            Action:
+            - s3:GetObject
+            - s3:GetObjectVersion
+            Resource:
+            - !Join
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref 'PipelineBucket'
+                - /*
+          - Effect: Allow
+            Action:
+              - codebuild:CreateReportGroup
+              - codebuild:CreateReport
+              - codebuild:UpdateReport
+              - codebuild:BatchPutTestCases
+              - codebuild:BatchPutCodeCoverages
+            Resource: "arn:aws:codebuild:*:*:report-group/*"
+          - Effect: Allow
+            Action:
+              - ec2:CreateNetworkInterface
+              - ec2:DescribeDhcpOptions
+              - ec2:DescribeNetworkInterfaces
+              - ec2:DeleteNetworkInterface
+              - ec2:DescribeSubnets
+              - ec2:DescribeSecurityGroups
+              - ec2:DescribeVpcs
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - ec2:CreateNetworkInterfacePermission
+            Resource: arn:aws:ec2:*:*:network-interface/*
+            Condition:
+              StringLike:
+                ec2:Subnet:
+                  - arn:aws:ec2:*:*:subnet/*
+                ec2:AuthorizedService: codebuild.amazonaws.com
 
-  CodeDeployGroup:
-    DependsOn: [ CodeDeployRole ]
-    Type: AWS::CodeDeploy::DeploymentGroup
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    DependsOn: [ CodeBuildServicePolicy ]
     Properties:
-      ApplicationName: !Ref CodeDeployApplication
-      AutoScalingGroups:
-        - !Ref 'WebASG'
-      DeploymentConfigName: CodeDeployDefault.OneAtATime
-      DeploymentStyle:
-        DeploymentOption: WITH_TRAFFIC_CONTROL
-        DeploymentType: IN_PLACE
-      LoadBalancerInfo:
-        TargetGroupInfoList:
-          - Name: !Ref PublicAlbTargetGroupName
-      ServiceRoleArn: !GetAtt CodeDeployRole.Arn
+      Name: !Join [ '', [ 'Build-', !Ref 'AWS::StackName' ] ]
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: 'aws/codebuild/amazonlinux2-x86_64-standard:3.0'
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: BUILD_ARTIFACT_BUCKET
+            Value: !Ref PipelineBucket
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec.yml
+      VpcConfig:
+        SecurityGroupIds:
+        - Ref: SG
+        Subnets:
+          !If
+            [ NumberOfSubnets1,
+            [ !Select [ 0, !Ref Subnet ] ],
+            !If
+              [ NumberOfSubnets2,
+              [ !Select [ 0, !Ref Subnet ], !Select [ 1, !Ref Subnet ] ],
+              !If
+                [ NumberOfSubnets3,
+                [ !Select [ 0, !Ref Subnet ], !Select [ 1, !Ref Subnet ], !Select [ 2, !Ref Subnet ] ],
+                !If
+                  [ NumberOfSubnets4,
+                  [ !Select [ 0, !Ref Subnet ], !Select [ 1, !Ref Subnet ], !Select [ 2, !Ref Subnet ], !Select [ 3, !Ref Subnet ] ],
+                  !If
+                    [ NumberOfSubnets5,
+                    [ !Select [ 0, !Ref Subnet ], !Select [ 1, !Ref Subnet ], !Select [ 2, !Ref Subnet ], !Select [ 3, !Ref Subnet ], !Select [ 4, !Ref Subnet ] ],
+                    [ !Select [ 0, !Ref Subnet ], !Select [ 1, !Ref Subnet ], !Select [ 2, !Ref Subnet ], !Select [ 3, !Ref Subnet ], !Select [ 4, !Ref Subnet ], !Select [ 5, !Ref Subnet ] ]
+                    ]
+                  ]
+                ]
+              ]
+            ]
+        VpcId: !Ref VPCId
+      FileSystemLocations:
+      - Identifier: 'staging_efs'
+        Location: !Sub '${EFS}.efs.${AWS::Region}.amazonaws.com:/'
+        MountOptions: "nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2"
+        MountPoint: '/efs'
+        Type: EFS
 
   CodePipelineServiceRole:
     Type: AWS::IAM::Role
@@ -99,7 +251,7 @@ Resources:
 
   CodePipelineServicePolicy:
     Type: AWS::IAM::Policy
-    DependsOn: [ CodeDeployGroup ]
+    DependsOn: [ CodeBuildProject ]
     Properties:
       PolicyName: CodePipelineServicePolicy
       Roles:
@@ -150,17 +302,14 @@ Resources:
             Resource: '*'
           - Effect: Allow
             Action:
-              - codedeploy:CreateDeployment
-              - codedeploy:GetApplication
-              - codedeploy:GetApplicationRevision
-              - codedeploy:GetDeployment
-              - codedeploy:GetDeploymentConfig
-              - codedeploy:RegisterApplicationRevision
-            Resource: '*'
+              - codebuild:BatchGetBuilds
+              - codebuild:StartBuild
+              - codebuild:StopBuild
+            Resource: !GetAtt 'CodeBuildProject.Arn'
 
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
-    DependsOn: [ CodePipelineServiceRole, CodeDeployGroup ]
+    DependsOn: [ CodePipelineServiceRole, CodeBuildProject ]
     Properties:
       RoleArn: !GetAtt 'CodePipelineServiceRole.Arn'
       ArtifactStore:
@@ -200,11 +349,8 @@ Resources:
               ActionTypeId:
                 Version: '1'
                 Owner: AWS
-                Category: Deploy
-                Provider: CodeDeploy
+                Category: Build
+                Provider: CodeBuild
               Configuration:
-                ApplicationName:
-                  !Ref CodeDeployApplication
-                DeploymentGroupName:
-                  !Ref CodeDeployGroup
+                ProjectName: !Ref CodeBuildProject
               RunOrder: 1

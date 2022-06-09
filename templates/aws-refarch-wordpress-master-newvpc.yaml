@@ -382,7 +382,7 @@ Parameters:
     Description: The Amazon RDS master database name.
     Type: String
   DeployBranch:
-    Description: Name of the branch selected to deploy in the EC2 instances
+    Description: Name of the branch selected to deploy files to EFS
     Type: String
   EfsAlarmsInstanceType:
     AllowedValues:
@@ -1090,22 +1090,28 @@ Resources:
           !Ref EfsCreateAlarms
       TemplateURL: https://s3.amazonaws.com/aws-refarch-python3/wordpress/latest/templates/aws-refarch-wordpress-06-dashboard.yaml
   deployment:
-    DependsOn: [ publicalb, web ]
+    DependsOn: [ newvpc, securitygroups, efsfilesystem ]
     Type: AWS::CloudFormation::Stack
     Properties:
       Parameters:
+        EFS:
+          !GetAtt [ efsfilesystem, Outputs.ElasticFileSystem ]
         PipelineBucket:
           !Ref PipelineBucket
-        PublicAlbTargetGroupName:
-          !GetAtt [ publicalb, Outputs.PublicAlbTargetGroupName ]
         RepoConnection:
           !Ref RepoConnection
         RepoName:
           !Ref RepoName
         DeployBranch:
           !Ref DeployBranch
-        WebASG:
-          !GetAtt [ web, Outputs.WebASG]
+        NumberOfSubnets:
+          !Ref NumberOfAZs
+        Subnet:
+          !GetAtt [ newvpc, Outputs.DataSubnet ]
+        VPCId:
+          !GetAtt [ newvpc, Outputs.Vpc]
+        SG:
+          !GetAtt [ securitygroups, Outputs.EfsSecurityGroup ]
       TemplateURL: https://s3.amazonaws.com/aws-refarch-python3/wordpress/latest/templates/pipeline-deployment.yaml
   efsfilesystem:
     DependsOn: [ newvpc, securitygroups ]

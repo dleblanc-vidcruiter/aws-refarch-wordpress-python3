@@ -451,27 +451,6 @@ Resources:
             - logs:DescribeLogStreams
             Resource:
             - arn:aws:logs:*:*:*
-          - Effect: Allow
-            Resource:
-              - !Join
-                - ''
-                - - 'arn:aws:s3:::'
-                  - !Ref 'PipelineBucket'
-            Action:
-              - s3:ListBucket
-              - s3:GetBucketAcl
-              - s3:GetBucketLocation
-              - s3:GetBucketVersioning
-          - Effect: Allow
-            Resource:
-              - !Join
-                - ''
-                - - 'arn:aws:s3:::'
-                  - !Ref 'PipelineBucket'
-                  - /*
-            Action:
-              - s3:GetObject
-              - s3:GetObjectVersion
   WebAutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
@@ -541,7 +520,6 @@ Resources:
             - install_wordpress
             - install_opcache
             - start_webserver
-            - install_codedeploy_agent
         amazon_linux_extras_setup:
           files:
             /tmp/create_amazon_linux_extras.sh:
@@ -567,28 +545,6 @@ Resources:
           commands:
             amazon_linux_extras_php74:
               command: ./create_amazon_linux_extras.sh
-              cwd: /tmp
-              ignoreErrors: false
-        install_codedeploy_agent:
-          files:
-            /tmp/install_codedeploy_agent.sh:
-              content:
-                !Join [
-                  "",[
-                    "#!/bin/bash -xe\n",
-                    "sudo amazon-linux-extras install ruby2.6 \n",
-                    "wget -O /tmp/install-codedeploy-agent https://aws-codedeploy-", !Ref AWS::Region,".s3.amazonaws.com/latest/install \n",
-                    "chmod +x /tmp/install-codedeploy-agent \n",
-                    "sudo /tmp/install-codedeploy-agent auto \n",
-                    "rm /tmp/install-codedeploy-agent \n"
-                  ]
-                ]
-              mode: 000500
-              owner: root
-              group: root
-          commands:
-            install_agent:
-              command: ./install_codedeploy_agent.sh
               cwd: /tmp
               ignoreErrors: false
         nginx_download_files:
