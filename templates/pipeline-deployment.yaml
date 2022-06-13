@@ -24,11 +24,17 @@ Metadata:
         default: Name of the repository for the pipeline
       DeployBranch:
         default: Branch for the deployment
+      MountPoint:
+        default: Location in the container to mount the file system
 
 Parameters:
   EFS:
     AllowedPattern: ^(fs-)([a-z0-9]{8,17})$
     Description: The Amazon EFS file system id.
+    Type: String
+  MountPoint:
+    Description: Location in the container to mount the file system.
+    Default: /efs
     Type: String
   PipelineBucket:
     Description: Pipeline Bucket Name.
@@ -61,6 +67,10 @@ Parameters:
   SG:
     Description: Select the efs security group.
     Type: AWS::EC2::SecurityGroup::Id
+  WPDirectory:
+    AllowedPattern: ^([a-zA-Z0-9])([a-zA-Z0-9_-])*([a-zA-Z0-9])$
+    Description: The WordPress site directory.
+    Type: String
 
 Conditions:
   NumberOfSubnets1:
@@ -200,6 +210,10 @@ Resources:
         EnvironmentVariables:
           - Name: BUILD_ARTIFACT_BUCKET
             Value: !Ref PipelineBucket
+          - Name: MOUNT_POINT
+            Value: !Ref MountPoint
+          - Name: WP_DIRECTORY
+            Value: !Ref WPDirectory
       Source:
         Type: CODEPIPELINE
         BuildSpec: buildspec.yml
@@ -233,7 +247,7 @@ Resources:
       - Identifier: 'staging_efs'
         Location: !Sub '${EFS}.efs.${AWS::Region}.amazonaws.com:/'
         MountOptions: "nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2"
-        MountPoint: '/efs'
+        MountPoint: !Ref MountPoint
         Type: EFS
 
   CodePipelineServiceRole:

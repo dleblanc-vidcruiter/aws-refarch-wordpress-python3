@@ -101,6 +101,7 @@ Metadata:
         - RepoConnection
         - RepoName
         - DeployBranch
+        - MountPoint
     ParameterLabels:
       BastionInstanceType:
         default: Bastion Instance Type
@@ -230,6 +231,8 @@ Metadata:
         default: Name of the repository for the pipeline
       DeployBranch:
         default: Branch for the deployment
+      MountPoint:
+        default: Location in the container to mount the file system
 
 Parameters:
 
@@ -654,6 +657,10 @@ Parameters:
     ConstraintDescription: Must be letters (upper or lower), numbers, and special characters.
     Description: Name of an EC2 KeyPair. Your bastion & Web instances will launch with this KeyPair.
     Type: AWS::EC2::KeyPair::KeyName
+  MountPoint:
+    Description: Location in the container to mount the file system.
+    Default: /efs
+    Type: String
   PHPIniOverride:
     Description: Full Amazon S3 https path to a php.ini override file (e.g. https://s3.amazonaws.com/aws-refarch-python3/wordpress/latest/bits/20-aws.ini)
     Type: String
@@ -830,6 +837,7 @@ Parameters:
     Type: String
   WPDirectory:
     AllowedPattern: ^([a-zA-Z0-9])([a-zA-Z0-9_-])*([a-zA-Z0-9])$
+    Default: vidcruiter
     Description: The WordPress site directory.
     Type: String
   WPDomainName:
@@ -1090,12 +1098,14 @@ Resources:
           !Ref EfsCreateAlarms
       TemplateURL: https://s3.amazonaws.com/aws-refarch-python3/wordpress/latest/templates/aws-refarch-wordpress-06-dashboard.yaml
   deployment:
-    DependsOn: [ newvpc, securitygroups, efsfilesystem ]
+    DependsOn: [ newvpc, securitygroups, efsfilesystem, web ]
     Type: AWS::CloudFormation::Stack
     Properties:
       Parameters:
         EFS:
           !GetAtt [ efsfilesystem, Outputs.ElasticFileSystem ]
+        MountPoint:
+          !Ref MountPoint
         PipelineBucket:
           !Ref PipelineBucket
         RepoConnection:
@@ -1112,6 +1122,8 @@ Resources:
           !GetAtt [ newvpc, Outputs.Vpc]
         SG:
           !GetAtt [ securitygroups, Outputs.EfsSecurityGroup ]
+        WPDirectory:
+          !Ref WPDirectory
       TemplateURL: https://s3.amazonaws.com/aws-refarch-python3/wordpress/latest/templates/pipeline-deployment.yaml
   efsfilesystem:
     DependsOn: [ newvpc, securitygroups ]
