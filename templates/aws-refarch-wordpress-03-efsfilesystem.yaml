@@ -61,7 +61,7 @@ Parameters:
   Growth:
     ConstraintDescription: Must be an integer.
     Default: 0
-    Description: Amount of dummy data (GiB) to add to the file system (max 6144 GiB). Amazon EFS storage charges apply. 
+    Description: Amount of dummy data (GiB) to add to the file system (max 6144 GiB). Amazon EFS storage charges apply.
     MaxValue: 6144
     MinValue: 0
     Type: Number
@@ -146,7 +146,7 @@ Parameters:
     - 6
     Default: 3
     Description: Number of subnets. This must match your selections in the list of Subnets below.
-    Type: String 
+    Type: String
   PerformanceMode:
     AllowedValues:
       - generalPurpose
@@ -156,13 +156,13 @@ Parameters:
     Type: String
   SecurityGroup:
     Description: Select the Amazon EFS security group.
-    Type: AWS::EC2::SecurityGroup::Id   
+    Type: AWS::EC2::SecurityGroup::Id
   Subnet:
     Description: Select existing subnets.
     Type: List<AWS::EC2::Subnet::Id>
 
 Conditions:
-  
+
   NumberOfSubnets1:
       !Equals [ 1, !Ref NumberOfSubnets ]
   NumberOfSubnets2:
@@ -200,7 +200,7 @@ Conditions:
   Subnet4: !Or
     - !Condition NumberOfSubnets5
     - !Condition NumberOfSubnets6
-  Subnet5: !Condition NumberOfSubnets6  
+  Subnet5: !Condition NumberOfSubnets6
   UseAWS-ManagedCMK:
     !Equals ['', !Ref Cmk]
 
@@ -393,7 +393,7 @@ Resources:
           efs_add_storage:
             - efs-add-storage
         efs-add-storage:
-          files:              
+          files:
             /tmp/efs-add-storage.sh:
               content: !Sub |
                 #!/bin/bash -x
@@ -466,7 +466,7 @@ Resources:
 
               mode: 000777
               owner: root
-              group: root             
+              group: root
     Properties:
       BlockDeviceMappings:
         - DeviceName: /dev/xvda
@@ -502,7 +502,7 @@ Resources:
           ]
   EfsSizeMonitorFunction:
     Type: AWS::Lambda::Function
-    Properties: 
+    Properties:
       Code:
         ZipFile: !Sub |
           import boto3
@@ -575,16 +575,16 @@ Resources:
       ManagedPolicyArns:
       - arn:aws:iam::aws:policy/CloudWatchFullAccess
       - arn:aws:iam::aws:policy/AmazonElasticFileSystemReadOnlyAccess
-  EfsLambdaPermission: 
+  EfsLambdaPermission:
     Type: AWS::Lambda::Permission
-    Properties: 
+    Properties:
       FunctionName: !Ref EfsSizeMonitorFunction
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
       SourceArn: !GetAtt EfsSizeMonitorEvent.Arn
   EfsSizeMonitorEvent:
     Type: AWS::Events::Rule
-    Properties: 
+    Properties:
       Description: Scheduled event to update SizeInBytes EFS CloudWatch metric
       Name: !Join [ '', [ 'efs-', !Ref ElasticFileSystem, '-size-monitor-scheduled-event' ] ]
       ScheduleExpression: rate(1 minute)

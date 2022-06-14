@@ -154,6 +154,9 @@ Parameters:
     Default: 7.4
     Description: The version of PHP to install.
     Type: String
+  PipelineBucket:
+    Description: Pipeline Bucket Name.
+    Type: String
   PublicAlbTargetGroupArn:
     Description: The public application load balancer target group arn.
     Type: String
@@ -923,3 +926,5 @@ Outputs:
 
   Opcachestatus:
     Value: !Join [ '', [ !Ref PublicAlbHostname, '/opcache-instanceid.php' ] ]
+  WebASG:
+    Value: !Ref WebAutoScalingGroup

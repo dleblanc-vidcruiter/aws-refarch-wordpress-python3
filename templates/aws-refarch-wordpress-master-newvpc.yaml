@@ -94,6 +94,14 @@ Metadata:
         - WPAdminPassword
         - WPDirectory
         - WPLocale
+    - Label:
+        default: Deployment Pipeline
+      Parameters:
+        - PipelineBucket
+        - RepoConnection
+        - RepoName
+        - DeployBranch
+        - MountPoint
     ParameterLabels:
       BastionInstanceType:
         default: Bastion Instance Type
@@ -215,6 +223,16 @@ Metadata:
         default: Data Subnet 4
       DataSubnet5Cidr:
         default: Data Subnet 5
+      PipelineBucket:
+        default: Pipeline Bucket Name
+      RepoConnection:
+        default: Codestar Bitbucket Connection ARN
+      RepoName:
+        default: Name of the repository for the pipeline
+      DeployBranch:
+        default: Branch for the deployment
+      MountPoint:
+        default: Location in the container to mount the file system
 
 Parameters:
 
@@ -365,6 +383,9 @@ Parameters:
   DatabaseName:
     AllowedPattern: ^([a-zA-Z0-9]*)$
     Description: The Amazon RDS master database name.
+    Type: String
+  DeployBranch:
+    Description: Name of the branch selected to deploy files to EFS
     Type: String
   EfsAlarmsInstanceType:
     AllowedValues:
@@ -636,6 +657,10 @@ Parameters:
     ConstraintDescription: Must be letters (upper or lower), numbers, and special characters.
     Description: Name of an EC2 KeyPair. Your bastion & Web instances will launch with this KeyPair.
     Type: AWS::EC2::KeyPair::KeyName
+  MountPoint:
+    Description: Location in the container to mount the file system.
+    Default: /efs
+    Type: String
   PHPIniOverride:
     Description: Full Amazon S3 https path to a php.ini override file (e.g. https://s3.amazonaws.com/aws-refarch-python3/wordpress/latest/bits/20-aws.ini)
     Type: String
@@ -648,9 +673,20 @@ Parameters:
     Default: 7.4
     Description: The version of PHP to install.
     Type: String
+  PipelineBucket:
+    AllowedPattern: ^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$
+    Description: 'Pipeline Bucket Name'
+    Type: String
   PublicAlbAcmCertificate:
     AllowedPattern: ^$|(arn:aws:acm:)([a-z0-9/:-])*([a-z0-9])$
     Description: '[ Optional ] The AWS Certification Manager certificate ARN for the ALB certificate - this certificate should be created in the region you wish to run the ALB and must reference the WordPress domain name you use below.'
+    Type: String
+  RepoConnection:
+    AllowedPattern: arn:aws(-[\w]+)*:.+:.+:[0-9]{12}:.+
+    Description: Codestar Bitbucket Connection ARN
+    Type: String
+  RepoName:
+    Description: Name of the repository to use in the pipeline
     Type: String
   SshAccessCidr:
     AllowedPattern: ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$
@@ -801,6 +837,7 @@ Parameters:
     Type: String
   WPDirectory:
     AllowedPattern: ^([a-zA-Z0-9])([a-zA-Z0-9_-])*([a-zA-Z0-9])$
+    Default: vidcruiter
     Description: The WordPress site directory.
     Type: String
   WPDomainName:
@@ -1043,7 +1080,7 @@ Resources:
         PublicAlbFullName:
           !GetAtt [ publicalb, Outputs.PublicAlbFullName ]
         EfsCreateAlarms:
-          !Ref EfsCreateAlarms         
+          !Ref EfsCreateAlarms
       TemplateURL: https://s3.amazonaws.com/aws-refarch-python3/wordpress/latest/templates/aws-refarch-wordpress-06-dashboard.yaml
   dashboardwithnoalarms:
     Condition: EfsCreateNoAlarms
@@ -1058,8 +1095,36 @@ Resources:
         PublicAlbFullName:
           !GetAtt [ publicalb, Outputs.PublicAlbFullName ]
         EfsCreateAlarms:
-          !Ref EfsCreateAlarms         
+          !Ref EfsCreateAlarms
       TemplateURL: https://s3.amazonaws.com/aws-refarch-python3/wordpress/latest/templates/aws-refarch-wordpress-06-dashboard.yaml
+  deployment:
+    DependsOn: [ newvpc, securitygroups, efsfilesystem, web ]
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        EFS:
+          !GetAtt [ efsfilesystem, Outputs.ElasticFileSystem ]
+        MountPoint:
+          !Ref MountPoint
+        PipelineBucket:
+          !Ref PipelineBucket
+        RepoConnection:
+          !Ref RepoConnection
+        RepoName:
+          !Ref RepoName
+        DeployBranch:
+          !Ref DeployBranch
+        NumberOfSubnets:
+          !Ref NumberOfAZs
+        Subnet:
+          !GetAtt [ newvpc, Outputs.DataSubnet ]
+        VPCId:
+          !GetAtt [ newvpc, Outputs.Vpc]
+        SG:
+          !GetAtt [ securitygroups, Outputs.EfsSecurityGroup ]
+        WPDirectory:
+          !Ref WPDirectory
+      TemplateURL: https://s3.amazonaws.com/aws-refarch-python3/wordpress/latest/templates/pipeline-deployment.yaml
   efsfilesystem:
     DependsOn: [ newvpc, securitygroups ]
     Type: AWS::CloudFormation::Stack
@@ -1263,6 +1328,8 @@ Resources:
           !Ref EC2KeyName
         NumberOfSubnets:
           !Ref NumberOfAZs
+        PipelineBucket:
+          !Ref PipelineBucket
         PHPIniOverride:
           !Ref PHPIniOverride
         PHPVersion:
